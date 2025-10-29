@@ -23,8 +23,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    messages = db.relationship('Message', backref='author', lazy=True)
-    room_memberships = db.relationship('RoomMember', backref='user', lazy=True)
+    messages = db.relationship('Message', backref='author', lazy=True, cascade='all, delete-orphan')
+    room_memberships = db.relationship('RoomMember', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
@@ -39,7 +39,8 @@ class User(db.Model):
             'display_name': self.display_name,
             'avatar_url': self.avatar_url,
             'is_online': self.is_online,
-            'last_seen': self.last_seen.isoformat() if self.last_seen else None
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 class Room(db.Model):
@@ -55,8 +56,8 @@ class Room(db.Model):
     max_members = db.Column(db.Integer, default=100)
     
     # Relationships
-    messages = db.relationship('Message', backref='room', lazy=True)
-    members = db.relationship('RoomMember', backref='room', lazy=True)
+    messages = db.relationship('Message', backref='room', lazy=True, cascade='all, delete-orphan')
+    members = db.relationship('RoomMember', backref='room', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         if password:
@@ -107,7 +108,7 @@ class Message(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     
     # Relationship for replies
-    replies = db.relationship('Message', backref=db.backref('parent', remote_side=[id]))
+    replies = db.relationship('Message', backref=db.backref('parent', remote_side=[id]), cascade='all, delete-orphan')
     
     def to_dict(self):
         return {

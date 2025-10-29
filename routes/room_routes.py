@@ -24,6 +24,7 @@ def get_rooms():
         })
         
     except Exception as e:
+        print(f"❌ Error in /rooms GET: {str(e)}")
         return jsonify({"error": "Server error"}), 500
 
 @room_bp.route('/rooms', methods=['POST'])
@@ -46,7 +47,7 @@ def create_room():
         
         # Check room limit
         user_room_count = Room.query.filter_by(created_by=current_user.id).count()
-        if user_room_count >= 50:  # Config.MAX_ROOMS_PER_USER
+        if user_room_count >= 50:
             return jsonify({"error": "Room limit reached"}), 400
         
         # Create room
@@ -59,7 +60,7 @@ def create_room():
         room.set_password(password)
         
         db.session.add(room)
-        db.session.flush()  # Get room ID
+        db.session.flush()  # Get room ID without committing
         
         # Add creator as owner
         membership = RoomMember(
@@ -80,6 +81,8 @@ def create_room():
         
         db.session.commit()
         
+        print(f"✅ Room created: {name} (ID: {room.id}) by {current_user.username}")
+        
         return jsonify({
             "message": "Room created successfully",
             "room": room.to_dict()
@@ -87,7 +90,8 @@ def create_room():
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Server error during room creation"}), 500
+        print(f"❌ Error in /rooms POST: {str(e)}")
+        return jsonify({"error": f"Server error during room creation: {str(e)}"}), 500
 
 @room_bp.route('/rooms/<room_id>', methods=['GET'])
 @jwt_required()
@@ -116,7 +120,7 @@ def get_room(room_id):
             {
                 'user': member.user.to_dict(),
                 'role': member.role,
-                'joined_at': member.joined_at.isoformat()
+                'joined_at': member.jointed_at.isoformat()
             }
             for member in members
         ]
@@ -124,6 +128,7 @@ def get_room(room_id):
         return jsonify({"room": room_data})
         
     except Exception as e:
+        print(f"❌ Error in /rooms/<room_id> GET: {str(e)}")
         return jsonify({"error": "Server error"}), 500
 
 @room_bp.route('/rooms/<room_id>/join', methods=['POST'])
@@ -176,6 +181,8 @@ def join_room(room_id):
         
         db.session.commit()
         
+        print(f"✅ User {current_user.username} joined room {room_id}")
+        
         return jsonify({
             "message": "Joined room successfully",
             "room": room.to_dict()
@@ -183,6 +190,7 @@ def join_room(room_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /rooms/<room_id>/join: {str(e)}")
         return jsonify({"error": "Server error during room join"}), 500
 
 @room_bp.route('/rooms/<room_id>/leave', methods=['POST'])
@@ -212,8 +220,11 @@ def leave_room(room_id):
         db.session.delete(membership)
         db.session.commit()
         
+        print(f"✅ User {current_user.username} left room {room_id}")
+        
         return jsonify({"message": "Left room successfully"})
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /rooms/<room_id>/leave: {str(e)}")
         return jsonify({"error": "Server error during room leave"}), 500
