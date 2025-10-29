@@ -10,11 +10,15 @@ message_bp = Blueprint('message', __name__)
 @jwt_required()
 def get_messages(room_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
         
         # Check if user is room member
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=room_id
         ).first()
         
@@ -57,13 +61,19 @@ def get_messages(room_id):
         })
         
     except Exception as e:
+        print(f"❌ Error in /rooms/<room_id>/messages: {str(e)}")
         return jsonify({"error": "Server error"}), 500
 
 @message_bp.route('/rooms/<room_id>/messages', methods=['POST'])
 @jwt_required()
 def send_message(room_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json()
         
         if not data:
@@ -71,7 +81,7 @@ def send_message(room_id):
         
         # Check if user is room member
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=room_id
         ).first()
         
@@ -95,7 +105,7 @@ def send_message(room_id):
         # Create message
         message = Message(
             room_id=room_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             content=content,
             message_type=message_type,
             file_url=file_url,
@@ -105,6 +115,8 @@ def send_message(room_id):
         db.session.add(message)
         db.session.commit()
         
+        print(f"✅ Message sent by {current_user.username} in room {room_id}")
+        
         return jsonify({
             "message": "Message sent successfully",
             "message_data": message.to_dict()
@@ -112,13 +124,21 @@ def send_message(room_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /rooms/<room_id>/messages POST: {str(e)}")
         return jsonify({"error": "Server error during message sending"}), 500
+
+# ... остальные функции message_routes с аналогичными исправлениями ...
 
 @message_bp.route('/messages/<message_id>', methods=['PUT'])
 @jwt_required()
 def edit_message(message_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json()
         
         if not data:
@@ -129,7 +149,7 @@ def edit_message(message_id):
             return jsonify({"error": "Message not found"}), 404
         
         # Check if user owns the message
-        if message.user_id != current_user.id:
+        if message.user_id != current_user_id:
             return jsonify({"error": "Can only edit your own messages"}), 403
         
         new_content = data.get('content', '').strip()
@@ -148,25 +168,30 @@ def edit_message(message_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /messages/<message_id> PUT: {str(e)}")
         return jsonify({"error": "Server error during message edit"}), 500
 
 @message_bp.route('/messages/<message_id>', methods=['DELETE'])
 @jwt_required()
 def delete_message(message_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
         
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         message = Message.query.get(message_id)
         if not message:
             return jsonify({"error": "Message not found"}), 404
         
         # Check if user owns the message or is room admin
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=message.room_id
         ).first()
         
-        can_delete = (message.user_id == current_user.id) or (membership and membership.role in ['admin', 'owner'])
+        can_delete = (message.user_id == current_user_id) or (membership and membership.role in ['admin', 'owner'])
         
         if not can_delete:
             return jsonify({"error": "Insufficient permissions to delete message"}), 403
@@ -182,13 +207,19 @@ def delete_message(message_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /messages/<message_id> DELETE: {str(e)}")
         return jsonify({"error": "Server error during message deletion"}), 500
 
 @message_bp.route('/messages/<message_id>/reactions', methods=['POST'])
 @jwt_required()
 def add_reaction(message_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json()
         
         if not data:
@@ -204,7 +235,7 @@ def add_reaction(message_id):
         
         # Check if user is room member
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=message.room_id
         ).first()
         
@@ -214,7 +245,7 @@ def add_reaction(message_id):
         # Check if reaction already exists
         existing_reaction = MessageReaction.query.filter_by(
             message_id=message_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             emoji=emoji
         ).first()
         
@@ -224,7 +255,7 @@ def add_reaction(message_id):
         # Add reaction
         reaction = MessageReaction(
             message_id=message_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             emoji=emoji
         )
         
@@ -242,13 +273,19 @@ def add_reaction(message_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /messages/<message_id>/reactions POST: {str(e)}")
         return jsonify({"error": "Server error during reaction addition"}), 500
 
 @message_bp.route('/messages/<message_id>/reactions', methods=['DELETE'])
 @jwt_required()
 def remove_reaction(message_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json()
         
         if not data:
@@ -261,7 +298,7 @@ def remove_reaction(message_id):
         # Find and delete reaction
         reaction = MessageReaction.query.filter_by(
             message_id=message_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             emoji=emoji
         ).first()
         
@@ -275,4 +312,5 @@ def remove_reaction(message_id):
         
     except Exception as e:
         db.session.rollback()
+        print(f"❌ Error in /messages/<message_id>/reactions DELETE: {str(e)}")
         return jsonify({"error": "Server error during reaction removal"}), 500

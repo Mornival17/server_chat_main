@@ -9,11 +9,15 @@ room_bp = Blueprint('room', __name__)
 @jwt_required()
 def get_rooms():
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
         
         # Get public rooms and rooms user is member of
         public_rooms = Room.query.filter_by(is_private=False).all()
-        user_memberships = RoomMember.query.filter_by(user_id=current_user.id).all()
+        user_memberships = RoomMember.query.filter_by(user_id=current_user_id).all()
         user_room_ids = [membership.room_id for membership in user_memberships]
         user_rooms = Room.query.filter(Room.id.in_(user_room_ids)).all()
         
@@ -31,7 +35,12 @@ def get_rooms():
 @jwt_required()
 def create_room():
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json()
         
         if not data:
@@ -46,7 +55,7 @@ def create_room():
             return jsonify({"error": "Room name is required"}), 400
         
         # Check room limit
-        user_room_count = Room.query.filter_by(created_by=current_user.id).count()
+        user_room_count = Room.query.filter_by(created_by=current_user_id).count()
         if user_room_count >= 50:
             return jsonify({"error": "Room limit reached"}), 400
         
@@ -55,7 +64,7 @@ def create_room():
             name=name,
             description=description,
             is_private=is_private,
-            created_by=current_user.id
+            created_by=current_user_id
         )
         room.set_password(password)
         
@@ -64,7 +73,7 @@ def create_room():
         
         # Add creator as owner
         membership = RoomMember(
-            user_id=current_user.id,
+            user_id=current_user_id,
             room_id=room.id,
             role='owner'
         )
@@ -73,7 +82,7 @@ def create_room():
         # Add system message
         system_message = Message(
             room_id=room.id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             content=f"Room '{name}' was created by {current_user.display_name}",
             message_type='system'
         )
@@ -97,15 +106,19 @@ def create_room():
 @jwt_required()
 def get_room(room_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
         
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         room = Room.query.get(room_id)
         if not room:
             return jsonify({"error": "Room not found"}), 404
         
         # Check if user can access the room
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=room_id
         ).first()
         
@@ -120,7 +133,7 @@ def get_room(room_id):
             {
                 'user': member.user.to_dict(),
                 'role': member.role,
-                'joined_at': member.jointed_at.isoformat()
+                'joined_at': member.joined_at.isoformat()
             }
             for member in members
         ]
@@ -135,7 +148,12 @@ def get_room(room_id):
 @jwt_required()
 def join_room(room_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         data = request.get_json() or {}
         
         room = Room.query.get(room_id)
@@ -144,7 +162,7 @@ def join_room(room_id):
         
         # Check if already member
         existing_membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=room_id
         ).first()
         
@@ -164,7 +182,7 @@ def join_room(room_id):
         
         # Add user to room
         membership = RoomMember(
-            user_id=current_user.id,
+            user_id=current_user_id,
             room_id=room_id,
             role='member'
         )
@@ -173,7 +191,7 @@ def join_room(room_id):
         # Add system message
         system_message = Message(
             room_id=room_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             content=f"{current_user.display_name} joined the room",
             message_type='system'
         )
@@ -197,10 +215,14 @@ def join_room(room_id):
 @jwt_required()
 def leave_room(room_id):
     try:
-        current_user = get_jwt_identity()
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
         
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
         membership = RoomMember.query.filter_by(
-            user_id=current_user.id, 
+            user_id=current_user_id, 
             room_id=room_id
         ).first()
         
@@ -210,7 +232,7 @@ def leave_room(room_id):
         # Add system message
         system_message = Message(
             room_id=room_id,
-            user_id=current_user.id,
+            user_id=current_user_id,
             content=f"{current_user.display_name} left the room",
             message_type='system'
         )
