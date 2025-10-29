@@ -1,7 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, Room, RoomMember, User, Message
-from auth import validate_username, validate_password
 
 room_bp = Blueprint('room', __name__)
 
@@ -94,7 +93,8 @@ def create_room():
         
         return jsonify({
             "message": "Room created successfully",
-            "room": room.to_dict()
+            "room": room.to_dict(),
+            "auto_joined": True  # Сообщаем что пользователь автоматически присоединился
         }), 201
         
     except Exception as e:
@@ -138,6 +138,9 @@ def get_room(room_id):
             for member in members
         ]
         
+        # Добавляем информацию о том, является ли пользователь участником
+        room_data['is_member'] = membership is not None
+        
         return jsonify({"room": room_data})
         
     except Exception as e:
@@ -167,7 +170,12 @@ def join_room(room_id):
         ).first()
         
         if existing_membership:
-            return jsonify({"error": "Already a member of this room"}), 409
+            # Если уже участник, просто возвращаем успех и переходим в чат
+            return jsonify({
+                "message": "Already a member",
+                "room": room.to_dict(),
+                "already_member": True
+            })
         
         # Check password for private rooms
         if room.is_private or room.password_hash:
@@ -188,7 +196,7 @@ def join_room(room_id):
         )
         db.session.add(membership)
         
-        # Add system message
+        # Add system message только если пользователь действительно впервые входит
         system_message = Message(
             room_id=room_id,
             user_id=current_user_id,
@@ -203,13 +211,51 @@ def join_room(room_id):
         
         return jsonify({
             "message": "Joined room successfully",
-            "room": room.to_dict()
+            "room": room.to_dict(),
+            "new_member": True
         })
         
     except Exception as e:
         db.session.rollback()
         print(f"❌ Error in /rooms/<room_id>/join: {str(e)}")
         return jsonify({"error": "Server error during room join"}), 500
+
+@room_bp.route('/rooms/<room_id>/enter', methods=['POST'])
+@jwt_required()
+def enter_room(room_id):
+    """Альтернативный endpoint для входа в комнату - всегда разрешает вход участникам"""
+    try:
+        current_user_id = get_jwt_identity()
+        current_user = User.query.get(current_user_id)
+        
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
+            
+        room = Room.query.get(room_id)
+        if not room:
+            return jsonify({"error": "Room not found"}), 404
+        
+        # Check if user is member
+        membership = RoomMember.query.filter_by(
+            user_id=current_user_id, 
+            room_id=room_id
+        ).first()
+        
+        if not membership:
+            return jsonify({"error": "Not a member of this room"}), 403
+        
+        # Если пользователь участник - разрешаем вход
+        print(f"✅ User {current_user.username} entered room {room_id}")
+        
+        return jsonify({
+            "message": "Entered room successfully",
+            "room": room.to_dict(),
+            "is_member": True
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in /rooms/<room_id>/enter: {str(e)}")
+        return jsonify({"error": "Server error during room enter"}), 500
 
 @room_bp.route('/rooms/<room_id>/leave', methods=['POST'])
 @jwt_required()
@@ -229,7 +275,32 @@ def leave_room(room_id):
         if not membership:
             return jsonify({"error": "Not a member of this room"}), 404
         
-        # Add system message
+        # Если пользователь владелец комнаты, проверяем есть ли другие участники
+        if membership.role == 'owner':
+            other_members = RoomMember.query.filter(
+                RoomMember.room_id == room_id,
+                RoomMember.user_id != current_user_id
+            ).count()
+            
+            if other_members > 0:
+                # Назначаем нового владельца (первого попавшегося участника)
+                new_owner = RoomMember.query.filter(
+                    RoomMember.room_id == room_id,
+                    RoomMember.user_id != current_user_id
+                ).first()
+                
+                if new_owner:
+                    new_owner.role = 'owner'
+                    # Добавляем системное сообщение о смене владельца
+                    system_message = Message(
+                        room_id=room_id,
+                        user_id=current_user_id,
+                        content=f"{new_owner.user.display_name} is now the room owner",
+                        message_type='system'
+                    )
+                    db.session.add(system_message)
+        
+        # Add system message about leaving
         system_message = Message(
             room_id=room_id,
             user_id=current_user_id,
@@ -250,3 +321,24 @@ def leave_room(room_id):
         db.session.rollback()
         print(f"❌ Error in /rooms/<room_id>/leave: {str(e)}")
         return jsonify({"error": "Server error during room leave"}), 500
+
+@room_bp.route('/rooms/<room_id>/membership', methods=['GET'])
+@jwt_required()
+def check_membership(room_id):
+    """Проверка является ли пользователь участником комнаты"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        membership = RoomMember.query.filter_by(
+            user_id=current_user_id, 
+            room_id=room_id
+        ).first()
+        
+        return jsonify({
+            "is_member": membership is not None,
+            "role": membership.role if membership else None
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in /rooms/<room_id>/membership: {str(e)}")
+        return jsonify({"error": "Server error"}), 500
