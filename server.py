@@ -26,10 +26,48 @@ def create_app():
     # Register routes
     register_routes(app)
     
+    # Root endpoint
+    @app.route('/')
+    def root():
+        return jsonify({
+            "message": "Secure Chat Server API",
+            "version": "1.0.0",
+            "endpoints": {
+                "auth": {
+                    "register": "POST /api/auth/register",
+                    "login": "POST /api/auth/login",
+                    "profile": "GET /api/auth/profile",
+                    "logout": "POST /api/auth/logout"
+                },
+                "rooms": {
+                    "list": "GET /api/rooms",
+                    "create": "POST /api/rooms",
+                    "details": "GET /api/rooms/<room_id>",
+                    "join": "POST /api/rooms/<room_id>/join",
+                    "leave": "POST /api/rooms/<room_id>/leave"
+                },
+                "messages": {
+                    "list": "GET /api/rooms/<room_id>/messages",
+                    "send": "POST /api/rooms/<room_id>/messages",
+                    "edit": "PUT /api/messages/<message_id>",
+                    "delete": "DELETE /api/messages/<message_id>",
+                    "reactions": {
+                        "add": "POST /api/messages/<message_id>/reactions",
+                        "remove": "DELETE /api/messages/<message_id>/reactions"
+                    }
+                },
+                "health": "GET /health"
+            }
+        })
+    
     # Health check endpoint
     @app.route('/health')
     def health_check():
-        return jsonify({"status": "healthy", "message": "Chat server is running"})
+        return jsonify({
+            "status": "healthy", 
+            "message": "Chat server is running",
+            "database": "connected"
+        })
     
     # Create tables
     with app.app_context():
@@ -45,6 +83,7 @@ if __name__ == '__main__':
     print("🔐 Authentication: Enabled")
     print("🌐 CORS: Enabled")
     print("📡 Available Endpoints:")
+    print("   GET  / - API documentation")
     print("   POST /api/auth/register - Register new user")
     print("   POST /api/auth/login - Login user")
     print("   GET  /api/auth/profile - Get user profile")
